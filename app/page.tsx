@@ -11,7 +11,6 @@ import {
   GitBranch,
   GitPullRequest,
   Key,
-  BrainCircuit,
 } from "lucide-react";
 
 type Issue = {
@@ -207,26 +206,26 @@ const CodeReviewInterface = () => {
     </div>
   );
 
-  const parseMarkdownLikeText = (text: string) => {
-    if (text.startsWith("##")) {
-      const level = text.match(/^#{2,}/)?.[0].length || 2;
-      const content = text.replace(/^#{2,}\s*/, "");
-      return {
-        type: "heading",
-        level,
-        content,
-      };
-    } else if (text.match(/^\s*-\s+/)) {
-      const indent = text.match(/^\s*/)?.[0].length || 0;
-      const content = text.replace(/^\s*-\s+/, "");
-      return {
-        type: "list-item",
-        indent: Math.floor(indent / 2),
-        content,
-      };
-    }
-    return { type: "text", content: text };
-  };
+  // const parseMarkdownLikeText = (text: string) => {
+  //   if (text.startsWith("##")) {
+  //     const level = text.match(/^#{2,}/)?.[0].length || 2;
+  //     const content = text.replace(/^#{2,}\s*/, "");
+  //     return {
+  //       type: "heading",
+  //       level,
+  //       content,
+  //     };
+  //   } else if (text.match(/^\s*-\s+/)) {
+  //     const indent = text.match(/^\s*/)?.[0].length || 0;
+  //     const content = text.replace(/^\s*-\s+/, "");
+  //     return {
+  //       type: "list-item",
+  //       indent: Math.floor(indent / 2),
+  //       content,
+  //     };
+  //   }
+  //   return { type: "text", content: text };
+  // };
 
   const AISuggestions = ({ suggestions }: { suggestions: string[] }) => {
     const parseSuggestion = (suggestion: string) => {
