@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, memo } from "react";
 import {
   AlertCircle,
   Send,
@@ -12,6 +12,8 @@ import {
   GitPullRequest,
   Key,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Issue = {
   type: "lint" | "security" | "codesmell";
@@ -26,6 +28,253 @@ type CodeReviewResponse = {
   aiSuggestions?: string[];
 };
 
+const requiredFields = [
+  "owner",
+  "repo",
+  "repo_id",
+  "pr_id",
+  "github_token",
+  "llm_api_key",
+];
+
+// Memoized InputField component so that it only re-renders when its props change
+const InputField = memo(
+  ({
+    label,
+    name,
+    type = "text",
+    placeholder,
+    icon: Icon,
+    value,
+    error,
+    onChange,
+    onBlur,
+  }: {
+    label: string;
+    name: string;
+    type?: string;
+    placeholder: string;
+    icon: React.ElementType;
+    value: string;
+    error: string;
+    onChange: React.ChangeEventHandler<HTMLInputElement>;
+    onBlur: React.FocusEventHandler<HTMLInputElement>;
+  }) => {
+    const isRequired = requiredFields.includes(name);
+    return (
+      <div className="space-y-1">
+        <label
+          htmlFor={name}
+          className="block text-sm font-medium text-gray-700"
+        >
+          <div className="flex items-center gap-2">
+            <Icon className="w-4 h-4 text-gray-500" />
+            {label} {isRequired && <span className="text-red-500">*</span>}
+          </div>
+        </label>
+        <input
+          id={name}
+          type={type}
+          name={name}
+          value={value}
+          onChange={onChange}
+          onBlur={onBlur}
+          placeholder={placeholder}
+          aria-required={isRequired}
+          aria-invalid={!!error}
+          aria-describedby={error ? `${name}-error` : undefined}
+          className={`mt-1 block w-full rounded-md px-3 py-2 border shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-150 ${
+            error ? "border-red-300 bg-red-50" : "border-gray-300 bg-white"
+          }`}
+        />
+        {error && (
+          <p
+            id={`${name}-error`}
+            role="alert"
+            className="mt-1 text-sm text-red-600 flex items-center gap-1"
+          >
+            <AlertCircle className="w-4 h-4" />
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+);
+InputField.displayName = "InputField";
+
+const AISuggestions = memo(({ suggestions }: { suggestions: string[] }) => {
+  const formatSuggestion = (suggestion: string) => {
+    const parts = suggestion.split("8. Suggested Improvements:");
+
+    if (parts.length === 2) {
+      // If "8. Suggested Improvements:" is found, split and format accordingly
+      return (
+        <>
+          <ReactMarkdown
+            className="prose prose-blue max-w-none text-gray-700 prose-headings:text-blue-800 prose-a:text-blue-600 prose-strong:text-blue-700"
+            remarkPlugins={[remarkGfm]}
+          >
+            {parts[0] + "8. Suggested Improvements:"}
+          </ReactMarkdown>
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <pre className="language-javascript">
+              <code className="text-sm font-mono text-gray-800 whitespace-pre-wrap">
+                {parts[1].trim()}
+              </code>
+            </pre>
+          </div>
+        </>
+      );
+    }
+
+    // If no "8. Suggested Improvements:" found, render normally
+    return (
+      <ReactMarkdown
+        className="prose prose-blue max-w-none text-gray-700 prose-headings:text-blue-800 prose-a:text-blue-600 prose-strong:text-blue-700 prose-code:text-blue-800 prose-code:bg-blue-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded"
+        remarkPlugins={[remarkGfm]}
+      >
+        {suggestion}
+      </ReactMarkdown>
+    );
+  };
+
+  return (
+    <div className="bg-gradient-to-br from-blue-50 to-white p-6 rounded-lg border border-blue-200 shadow-lg">
+      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-blue-100">
+        <MessageSquare className="w-6 h-6 text-blue-600" />
+        <h2 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+          AI Analysis &amp; Suggestions
+        </h2>
+      </div>
+
+      <div className="space-y-4">
+        {suggestions.map((suggestion, index) => (
+          <div
+            key={index}
+            className="bg-white p-4 rounded-lg border border-blue-100 hover:border-blue-300 transition-all duration-200 hover:shadow-md"
+          >
+            {formatSuggestion(suggestion)}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 pt-4 border-t border-blue-100">
+        <div className="flex items-center gap-2 text-sm text-blue-600">
+          <Zap className="w-4 h-4" />
+          <span>Powered by Advanced AI Analysis</span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+AISuggestions.displayName = "AISuggestions";
+
+const ComplexityBadge = memo(({ score }: { score: number }) => {
+  const getComplexityColor = (score: number) => {
+    if (score === 0) return "bg-green-50 text-green-800 border-green-200";
+    if (score < 5) return "bg-yellow-50 text-yellow-800 border-yellow-200";
+    return "bg-red-50 text-red-800 border-red-200";
+  };
+
+  return (
+    <div
+      className={`flex items-center gap-3 p-4 rounded-lg border ${getComplexityColor(
+        score
+      )}`}
+    >
+      <BarChart2 className="w-6 h-6" />
+      <div>
+        <p className="text-sm font-medium">Complexity Score</p>
+        <p className="text-2xl font-bold">{score === 0 ? "Optimal" : score}</p>
+      </div>
+    </div>
+  );
+});
+ComplexityBadge.displayName = "ComplexityBadge";
+
+const IssueCard = memo(({ issue }: { issue: Issue }) => (
+  <div
+    className={`p-4 rounded-lg border ${
+      {
+        security: "bg-red-100 text-red-800 border-red-200",
+        lint: "bg-yellow-100 text-yellow-800 border-yellow-200",
+        codesmell: "bg-purple-100 text-purple-800 border-purple-200",
+      }[issue.type] || "bg-gray-100 text-gray-800 border-gray-200"
+    } transition-all hover:shadow-md`}
+  >
+    <div className="flex justify-between items-start gap-4">
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-opacity-50 uppercase">
+            {issue.type}
+          </span>
+        </div>
+        <p className="text-sm">{issue.message}</p>
+      </div>
+      {issue.line && (
+        <div className="flex-shrink-0">
+          <span className="text-xs font-mono bg-opacity-50 px-2 py-1 rounded">
+            Line {issue.line}
+          </span>
+        </div>
+      )}
+    </div>
+  </div>
+));
+IssueCard.displayName = "IssueCard";
+
+// Separate the review results into its own memoized component so that
+// it does not re-render on every keystroke in the form.
+const ReviewResults = memo(
+  ({
+    response,
+    error,
+  }: {
+    response: CodeReviewResponse | null;
+    error: string | null;
+  }) => (
+    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit max-h-[800px] overflow-y-auto">
+      <h2 className="text-lg font-semibold mb-6">Review Results</h2>
+      {error && (
+        <div
+          className="flex items-center gap-2 text-red-600 mb-4 p-4 bg-red-50 rounded-lg border border-red-200"
+          role="alert"
+          aria-live="assertive"
+        >
+          <AlertCircle className="w-5 h-5" />
+          <p>{error}</p>
+        </div>
+      )}
+      {response && (
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <File className="w-5 h-5 text-gray-600" />
+            <p className="font-medium">{response.file}</p>
+          </div>
+          <ComplexityBadge score={response.complexity} />
+          <div className="space-y-4">
+            <h3 className="font-semibold text-lg flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-yellow-500" />
+              Issues Found ({response.issues.length})
+            </h3>
+            <div className="space-y-3">
+              {response.issues.map((issue, index) => (
+                <IssueCard key={index} issue={issue} />
+              ))}
+            </div>
+          </div>
+          {response.aiSuggestions && (
+            <AISuggestions suggestions={response.aiSuggestions} />
+          )}
+        </div>
+      )}
+    </div>
+  )
+);
+ReviewResults.displayName = "ReviewResults";
+
 const CodeReviewInterface = () => {
   const [formData, setFormData] = useState({
     owner: "",
@@ -36,36 +285,44 @@ const CodeReviewInterface = () => {
     github_token: "",
     llm_api_key: "",
   });
-
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [response, setResponse] = useState<CodeReviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const requiredFields = [
-    "owner",
-    "repo",
-    "repo_id",
-    "pr_id",
-    "github_token",
-    "llm_api_key",
-  ];
-
-  const validateField = useCallback(
-    (name: string, value: string) => {
-      if (requiredFields.includes(name) && !value.trim()) {
-        return `${name.replace(/_/g, " ").toUpperCase()} is required`;
-      }
-      return "";
+  // Memoize the change and blur handlers so that they do not get re-created on each render.
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     },
-    [requiredFields]
+    []
+  );
+
+  const handleBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
+    setTouched((prev) => ({ ...prev, [e.target.name]: true }));
+  }, []);
+
+  const validateField = useCallback((name: string, value: string) => {
+    if (requiredFields.includes(name) && !value.trim()) {
+      return `${name.replace(/_/g, " ").toUpperCase()} is required`;
+    }
+    return "";
+  }, []);
+
+  // Memoize error checking for each field
+  const getFieldError = useCallback(
+    (fieldName: string) =>
+      touched[fieldName]
+        ? validateField(fieldName, formData[fieldName as keyof typeof formData])
+        : "",
+    [touched, formData, validateField]
   );
 
   const getFormErrors = useCallback(
     (data: typeof formData) =>
       Object.keys(data).reduce((errors: Record<string, string>, key) => {
-        const error = validateField(key, data[key as keyof typeof data]);
-        if (error) errors[key] = error;
+        const err = validateField(key, data[key as keyof typeof data]);
+        if (err) errors[key] = err;
         return errors;
       }, {}),
     [validateField]
@@ -99,9 +356,7 @@ const CodeReviewInterface = () => {
           body: JSON.stringify(formData),
         }
       );
-
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-
       const data: CodeReviewResponse = await res.json();
       setResponse(data);
     } catch (err) {
@@ -115,250 +370,10 @@ const CodeReviewInterface = () => {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    setTouched((prev) => ({ ...prev, [e.target.name]: true }));
-  };
-
-  const getFieldError = (fieldName: string) =>
-    touched[fieldName]
-      ? validateField(fieldName, formData[fieldName as keyof typeof formData])
-      : "";
-
-  const InputField = ({
-    label,
-    name,
-    type = "text",
-    placeholder,
-    icon: Icon,
-  }: {
-    label: string;
-    name: string;
-    type?: string;
-    placeholder: string;
-    icon: React.ElementType;
-  }) => {
-    const error = getFieldError(name);
-    return (
-      <div className="space-y-1">
-        <label className="block text-sm font-medium text-gray-700">
-          <div className="flex items-center gap-2">
-            <Icon className="w-4 h-4 text-gray-500" />
-            {label} <span className="text-red-500">*</span>
-          </div>
-        </label>
-        <input
-          type={type}
-          name={name}
-          value={formData[name as keyof typeof formData]}
-          onChange={handleInputChange}
-          onBlur={handleBlur}
-          className={`mt-1 block w-full rounded-md px-3 py-2 border shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-            error ? "border-red-300 bg-red-50" : "border-gray-300 bg-white"
-          }`}
-          placeholder={placeholder}
-        />
-        {error && (
-          <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-            <AlertCircle className="w-4 h-4" />
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  };
-
-  const getIssueColor = (type: Issue["type"]) => {
-    const colors = {
-      security: "bg-red-100 text-red-800 border-red-200",
-      lint: "bg-yellow-100 text-yellow-800 border-yellow-200",
-      codesmell: "bg-purple-100 text-purple-800 border-purple-200",
-    };
-    return colors[type] || "bg-gray-100 text-gray-800 border-gray-200";
-  };
-
-  const IssueCard = ({ issue }: { issue: Issue }) => (
-    <div
-      className={`p-4 rounded-lg border ${getIssueColor(
-        issue.type
-      )} transition-all hover:shadow-md`}
-    >
-      <div className="flex justify-between items-start gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-opacity-50 uppercase">
-              {issue.type}
-            </span>
-          </div>
-          <p className="text-sm">{issue.message}</p>
-        </div>
-        {issue.line && (
-          <div className="flex-shrink-0">
-            <span className="text-xs font-mono bg-opacity-50 px-2 py-1 rounded">
-              Line {issue.line}
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  // const parseMarkdownLikeText = (text: string) => {
-  //   if (text.startsWith("##")) {
-  //     const level = text.match(/^#{2,}/)?.[0].length || 2;
-  //     const content = text.replace(/^#{2,}\s*/, "");
-  //     return {
-  //       type: "heading",
-  //       level,
-  //       content,
-  //     };
-  //   } else if (text.match(/^\s*-\s+/)) {
-  //     const indent = text.match(/^\s*/)?.[0].length || 0;
-  //     const content = text.replace(/^\s*-\s+/, "");
-  //     return {
-  //       type: "list-item",
-  //       indent: Math.floor(indent / 2),
-  //       content,
-  //     };
-  //   }
-  //   return { type: "text", content: text };
-  // };
-
-  const AISuggestions = ({ suggestions }: { suggestions: string[] }) => {
-    const parseSuggestion = (suggestion: string) => {
-      if (suggestion.startsWith("## ")) {
-        return {
-          type: "header",
-          level: 2,
-          content: suggestion.replace("## ", ""),
-        };
-      }
-      if (suggestion.startsWith("### ")) {
-        return {
-          type: "header",
-          level: 3,
-          content: suggestion.replace("### ", ""),
-        };
-      }
-      if (suggestion.startsWith("* ")) {
-        return { type: "bullet", content: suggestion.replace("* ", "") };
-      }
-      if (suggestion.startsWith("```")) {
-        return { type: "code-block", content: suggestion };
-      }
-      return { type: "text", content: suggestion };
-    };
-
-    const renderSuggestion = (parsed: {
-      type: string;
-      level?: number;
-      content: string;
-    }) => {
-      switch (parsed.type) {
-        case "header":
-          if (parsed.level === 2) {
-            return <h2 className="text-lg font-bold mt-4">{parsed.content}</h2>;
-          }
-          if (parsed.level === 3) {
-            return (
-              <h3 className="text-md font-semibold mt-3 text-gray-800">
-                {parsed.content}
-              </h3>
-            );
-          }
-          break;
-        case "bullet":
-          return (
-            <li className="list-disc list-inside text-gray-700">
-              {parsed.content}
-            </li>
-          );
-        case "code-block":
-          return (
-            <pre className="bg-gray-800 text-gray-100 text-sm p-4 rounded-lg overflow-x-auto mt-4">
-              <code>{parsed.content.replace(/```/g, "").trim()}</code>
-            </pre>
-          );
-        case "text":
-          return <p className="text-gray-700 mt-2">{parsed.content}</p>;
-        default:
-          return null;
-      }
-    };
-
-    // Track multi-line code blocks
-    let isCodeBlock = false;
-    let codeLines: string[] = [];
-    const formattedSuggestions = [];
-
-    for (let i = 0; i < suggestions.length; i++) {
-      const suggestion = suggestions[i];
-      if (suggestion.startsWith("```")) {
-        if (!isCodeBlock) {
-          isCodeBlock = true;
-          codeLines = [suggestion];
-        } else {
-          isCodeBlock = false;
-          codeLines.push(suggestion);
-          formattedSuggestions.push({
-            type: "code-block",
-            content: codeLines.join("\n"),
-          });
-          codeLines = [];
-        }
-      } else if (isCodeBlock) {
-        codeLines.push(suggestion);
-      } else {
-        formattedSuggestions.push(parseSuggestion(suggestion));
-      }
-    }
-
-    return (
-      <div className="bg-black p-6 rounded-lg border border-blue-100 space-y-4">
-        <h3 className="text-xl font-semibold flex items-center gap-2 text-blue-900">
-          <MessageSquare className="w-6 h-6 text-blue-600" />
-          AI Analysis & Suggestions
-        </h3>
-        {formattedSuggestions.map((parsed, index) => (
-          <React.Fragment key={index}>
-            {renderSuggestion(parsed)}
-          </React.Fragment>
-        ))}
-      </div>
-    );
-  };
-
-  const ComplexityBadge = ({ score }: { score: number }) => {
-    const getComplexityColor = (score: number) => {
-      if (score === 0) return "bg-green-100 text-green-800 border-green-200";
-      if (score < 5) return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      return "bg-red-100 text-red-800 border-red-200";
-    };
-
-    return (
-      <div
-        className={`flex items-center gap-3 p-4 rounded-lg border ${getComplexityColor(
-          score
-        )}`}
-      >
-        <BarChart2 className="w-6 h-6" />
-        <div>
-          <p className="text-sm font-medium">Complexity Score</p>
-          <p className="text-2xl font-bold">
-            {score === 0 ? "Optimal" : score}
-          </p>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-8 px-4">
       <div className="max-w-7xl mx-auto">
-        {/* Header section remains the same */}
+        {/* Header Section */}
         <div className="flex flex-col gap-2 mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center gap-3">
             <Zap className="w-8 h-8 text-yellow-500" />
@@ -367,7 +382,7 @@ const CodeReviewInterface = () => {
                 Automated Code Review
               </h1>
               <p className="text-blue-600 font-medium">
-                Powered by AI & Static Analysis
+                Powered by AI &amp; Static Analysis
               </p>
             </div>
           </div>
@@ -381,19 +396,27 @@ const CodeReviewInterface = () => {
               <Send className="w-5 h-5 text-black" />
               Review Request
             </h2>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6" noValidate>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <InputField
                   label="Repository Owner"
                   name="owner"
                   placeholder="e.g., krishnaag23"
                   icon={GitBranch}
+                  value={formData.owner}
+                  error={getFieldError("owner")}
+                  onChange={handleInputChange}
+                  onBlur={handleBlur}
                 />
                 <InputField
                   label="Repository Name"
                   name="repo"
                   placeholder="e.g., automated-code-review-woa"
                   icon={GitBranch}
+                  value={formData.repo}
+                  error={getFieldError("repo")}
+                  onChange={handleInputChange}
+                  onBlur={handleBlur}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -402,12 +425,20 @@ const CodeReviewInterface = () => {
                   name="repo_id"
                   placeholder="e.g., 1"
                   icon={GitPullRequest}
+                  value={formData.repo_id}
+                  error={getFieldError("repo_id")}
+                  onChange={handleInputChange}
+                  onBlur={handleBlur}
                 />
                 <InputField
                   label="PR ID"
                   name="pr_id"
                   placeholder="e.g., 1"
                   icon={GitPullRequest}
+                  value={formData.pr_id}
+                  error={getFieldError("pr_id")}
+                  onChange={handleInputChange}
+                  onBlur={handleBlur}
                 />
               </div>
               <div className="space-y-4">
@@ -417,6 +448,10 @@ const CodeReviewInterface = () => {
                   type="password"
                   placeholder="Enter your GitHub token"
                   icon={Key}
+                  value={formData.github_token}
+                  error={getFieldError("github_token")}
+                  onChange={handleInputChange}
+                  onBlur={handleBlur}
                 />
                 <InputField
                   label="LLM API Key"
@@ -424,62 +459,34 @@ const CodeReviewInterface = () => {
                   type="password"
                   placeholder="Enter your LLM API key"
                   icon={Key}
+                  value={formData.llm_api_key}
+                  error={getFieldError("llm_api_key")}
+                  onChange={handleInputChange}
+                  onBlur={handleBlur}
                 />
               </div>
-
               <button
                 type="submit"
                 disabled={loading}
                 className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-all duration-200 shadow-sm hover:shadow-md"
               >
                 {loading ? (
-                  <Activity className="w-5 h-5 animate-spin" />
+                  <>
+                    <Activity className="w-5 h-5 animate-spin" />
+                    Analyzing Code...
+                  </>
                 ) : (
-                  <Send className="w-5 h-5" />
+                  <>
+                    <Send className="w-5 h-5" />
+                    Submit for Review
+                  </>
                 )}
-                {loading ? "Analyzing Code..." : "Submit for Review"}
               </button>
             </form>
           </div>
 
           {/* Results Section */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit max-h-[800px] overflow-y-auto">
-            <h2 className="text-lg font-semibold mb-6">Review Results</h2>
-
-            {error && (
-              <div className="flex items-center gap-2 text-red-600 mb-4 p-4 bg-red-50 rounded-lg border border-red-200">
-                <AlertCircle className="w-5 h-5" />
-                <p>{error}</p>
-              </div>
-            )}
-
-            {response && (
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <File className="w-5 h-5 text-gray-600" />
-                  <p className="font-medium">{response.file}</p>
-                </div>
-
-                <ComplexityBadge score={response.complexity} />
-
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-lg flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5 text-yellow-500" />
-                    Issues Found ({response.issues.length})
-                  </h3>
-                  <div className="space-y-3">
-                    {response.issues.map((issue, index) => (
-                      <IssueCard key={index} issue={issue} />
-                    ))}
-                  </div>
-                </div>
-
-                {response.aiSuggestions && (
-                  <AISuggestions suggestions={response.aiSuggestions} />
-                )}
-              </div>
-            )}
-          </div>
+          <ReviewResults response={response} error={error} />
         </div>
       </div>
     </div>
